@@ -1,0 +1,15 @@
+<launch>
+
+	<rosparam file="$(find espeleo_radio)/config/param.yaml" />
+
+	<!-- No que publica a mensagem de alerta -->
+	<node name="radio_notification" pkg="espeleo_radio" type="radio_notification.py" output = "screen" respawn="true" >
+	</node>
+
+	<!-- No que publica a qualidade emulada do sinal de radio -->
+	<node name="estimate_RSS" pkg="espeleo_radio" type="radio_estimate.py" output = "screen" respawn="true" >
+	</node>
+
+    <include file="$(find espeleo_gui)/launch/gui_simulation.launch"></include>
+
+</launch>

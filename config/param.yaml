@@ -1,0 +1,16 @@
+ws_path: '/home/andre/catkin_ws'
+radio_ip: '192.168.1.20'
+borderline_quality_red: 30
+borderline_quality_yel: 40
+borderline_noise: 40
+
+xb: -1.5 #posição em x da base de controle
+yb: 5.6 #posição em y da base de controle
+obstacle: False
+linear_model: False
+odom_topic: '/tf'
+
+radio_radio_signal_acquisition_method: 1
+radio_time_interval: 1
+radio_distance_interval: 0.2
+

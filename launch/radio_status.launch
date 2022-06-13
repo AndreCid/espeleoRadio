@@ -1,0 +1,26 @@
+<launch>
+
+	<rosparam file="$(find espeleo_radio)/config/param.yaml" />
+
+	<!-- No unificado que publica a mensagem do tipo radio_warning -->
+	<!--node name="radio_notification" pkg="espeleo_radio" type="radio_notification.py" output = "screen" respawn="true" -->
+		<!--param name = "ws_path" value = "/home/roomba/pioneer_ws" />
+		<param name = "borderline_quality" value = "30" />
+		<param name = "borderline_noise" value = "20" /-->
+	<!--/node-->
+
+	<!-- No que coleta os dados da qualidade do sinal de radio -->
+	<node name="status_catcher" pkg="espeleo_radio" type="test_lab_array_pub.py" output = "screen" respawn="true" >
+		<!--param name = "ws_path" value = "/home/roomba/pioneer_ws" />
+		<param name = "crit_value" value = "22" />
+		<param name = "bad_value" value = "30" /-->
+	</node>
+
+    <!-- No que verifica a diferenca entre os valores de sinal e ruido -->
+	<!--node name="noisef_signal_comparator" pkg="espeleo_radio" type="noisef_signal_comparator.py" output = "screen" respawn="true" >
+		<param name = "ws_path" value = "/home/roomba/pioneer_ws" />
+		<param name = "crit_value" value = "12" />
+		<param name = "bad_value" value = "20" />
+	</node-->
+
+</launch>

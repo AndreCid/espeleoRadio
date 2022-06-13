@@ -1,0 +1,2 @@
+bool quality_flag
+bool noise_flag
