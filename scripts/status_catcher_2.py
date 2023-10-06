@@ -1,87 +1,107 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import rospy
+import re
+import sys
+
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+from bs4 import BeautifulSoup
 
-s = float()
 
-def catcher():
-    # Criando a variavel que contem os status da conexao que serao publicados
-    status = Float32MultiArray()
-    status.layout.data_offset = 0
-    status.layout.dim = [MultiArrayDimension(), MultiArrayDimension()]
-    # dim[0] is the vertical dimension of your matrix
-    status.layout.dim[0].label = "lines"
-    status.layout.dim[0].size = 1
-    status.layout.dim[0].stride = 3
-    # dim[1] is the horizontal dimension of your matrix
-    status.layout.dim[1].label = "columns"
-    status.layout.dim[1].size = 3
-    status.layout.dim[1].stride = 3
-    status.data = [0.0, 0.0, 0.0]
-    #status.data[0] = 0.0 #s.quality = 0.0
-    #status.data[1] = 0.0 #s.signal = 0.0
-    #status.data[2] = 0.0 #s.noise = 0.0
+class StatusReader:
+    def __init__(self):
+        # Starting variables
+        self.status = Float32MultiArray()
+        self.status.layout.data_offset = 0
+        self.status.layout.dim = [MultiArrayDimension(), MultiArrayDimension()]
+        self.status.layout.dim[0].label = "lines"
+        self.status.layout.dim[0].size = 1
+        self.status.layout.dim[0].stride = 3
+        # dim[1] is the horizontal dimension of your matrix
+        self.status.layout.dim[1].label = "columns"
+        self.status.layout.dim[1].size = 3
+        self.status.layout.dim[1].stride = 3
+        self.status.data = [0.0, 0.0, 0.0]
 
-    # Inicializacao do no que publica os status
-    rospy.init_node('talker', anonymous=True)
-    pub = rospy.Publisher('/radio/status', Float32MultiArray, queue_size=10)
+        self.user = 'ubnt'
+        self.password = 'espeleo'
 
-    # Frequencia de atualizacao de 10hz (10 vezes por segundo)
-    node_sleep_rate = rospy.Rate(10) 
+        if len(sys.argv) < 2:
+            self.radio_ip = "192.168.1.23"
+        else:
+            self.radio_ip = sys.argv[1]
 
-    # Criacao do laco que garante a publicacao dos status ate que o no seja fechado
-    while not rospy.is_shutdown():
+        if len(sys.argv) < 3:
+            self.radio_pub_name = "/radio/status"
+        else:
+            self.radio_pub_name = "/radio/status_" + sys.argv[2] 
 
-        ws_path = rospy.get_param("ws_path")
-        radio_ip = rospy.get_param("radio_ip")
 
-        r = requests.get("http://{0}/status.cgi".format(radio_ip), auth=("ubnt", "espeleo"), verify= False)
+        # Starting ROS
+        rospy.init_node('radio_status_catcher', anonymous=True)
+        self.publisher = rospy.Publisher(self.radio_pub_name, Float32MultiArray, queue_size=10)
+        self.sleep_rate = rospy.Rate(1)
 
-        #r.encoding = 'utf-8'
-        page = r.text.encode('utf-8')
+        # Selenium configuration
+        self.init_selenium()
 
-        for line in page.splitlines():
-            if 'quality' in line:
-                matchedLine = line
-                vector = matchedLine.split(',')
-                for n in vector:
-                    if 'quality' in n:
-                        print(n)
-                        match = n
-            else:
-                match = 0
-        status.data[0] = filter(str.isdigit, match)
+    def init_selenium(self):
+        #self.radio_ip = rospy.get_param('radio_ip')
+        rospy.loginfo("Starting radio status cather node!")
+        rospy.loginfo("Radio IP: %s", self.radio_ip )
+        rospy.loginfo("Radio data: [quality(RSSI), Signal Strenght (-dB), Noise Floor (-dB)]")
+        self.options = Options()
+        self.options.add_argument('--headless')
+        self.options.add_argument('--ignore-certificate-errors')
+        self.options.add_argument('--allow-running-insecure-content')
+        
+        # Starting driver
+        #try:
+        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()),options=self.options)
+        #except:
+        #    rospy.logerr("Coudn't get chrome driver...")
+        
+        try:
+            self.driver.get('http://' + self.radio_ip + '/status.cgi')
+        except:
+            rospy.logerr("Couldn't connect to the radio")
+            rospy.logwarn("Radio IP not reachable. is %s the right IP?", self.radio_ip)
+            
 
-        for line in page.splitlines():
-            if 'signal' in line:
-                matchedLine = line
-                vector = matchedLine.split(',')
-                for n in vector:
-                    if 'signal' in n:
-                        print(n)
-                        match = n
-            else:
-                match = 0
-        status.data[1] = filter(str.isdigit, match)
+        # Main page
+        username = self.driver.find_element(By.ID, "username")
+        password = self.driver.find_element(By.ID, "password")
 
-        for line in page.splitlines():
-            if 'noisef' in line:
-                matchedLine = line
-                vector = matchedLine.split(',')
-                for n in vector:
-                    if 'noisef' in n:
-                        print(n)
-                        match = n
-        status.data[2] = filter(str.isdigit, match)
+        # Sending credentials
+        username.send_keys(self.user)
+        password.send_keys(self.password)
+        self.driver.find_element(By.CSS_SELECTOR, "input[type='submit']").click()
 
-        # Publicando a variavel com os status
-        pub.publish(status)
-        node_sleep_rate.sleep()
+        while not rospy.is_shutdown():
+
+            soup = BeautifulSoup(self.driver.page_source,"html5lib")
+            page = []
+            text = [i.getText() for i in soup]
+            page.append(text)
+            vector = str(page).split(",")
+
+            self.status.data[0] = self.filter_str(vector[19])[0] # Quality 33 (RSSI 19) 
+            self.status.data[1] = -self.filter_str(vector[18])[0] # Signal  (-Db)
+            self.status.data[2] = -self.filter_str(vector[20])[0] # Noiseref
+            self.publisher.publish(self.status)
+
+            self.driver.refresh()
+
+            self.sleep_rate.sleep()
+            
+    def filter_str(self, numb):
+        return [int(match) for match in re.findall(r"\d+", numb)]
+
 
 if __name__ == '__main__':
-    try:
-        catcher()
-    except rospy.ROSInterruptException:
-        pass
+    radio_obj = StatusReader()

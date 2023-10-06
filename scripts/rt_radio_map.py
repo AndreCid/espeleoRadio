@@ -1,33 +1,40 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 Scrip to read the radio signals and plot then in a array of markers in RVIZ
+
+version 2.0 -> Adding possibility to use dbm instead of the RSSI metric
 
 """
 
 import rospy
 
-import sys, select, termios, tty, math, message_filters
+import sys 
+import select 
+import termios
+import tty
+import math 
+import tf
+# import message_filters
 
 from tf2_msgs.msg import TFMessage
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 from visualization_msgs.msg import Marker, MarkerArray
+from radio_lib import RadioLib
+
 
 
 class RadioSignal:
     def __init__(self):
 
         # Starting variables
+        self.is_dbm = True # Decide if will catch the dbm or rssi radio signal
+
 
         # Class variables
         self.radio_RSSI = 0  # Instant radio signal intensity
         self.x = 0  # Instant robot position (x)
         self.y = 0
-        self.radio_max = 100
-        self.radio_min = 60
-        self.green_max = 1
-        self.green_min = 0
-        self.OldRange = self.radio_max - self.radio_min
-        self.NewRange = self.green_max - self.green_min
+
         self.first_time = True
 
         self.points = [[0, 0]]  # Array containing robot positions
@@ -36,9 +43,9 @@ class RadioSignal:
         self.distance_between_signals = False
 
         # Parameters variables
-        self.radio_signal_acquisition_method = rospy.get_param("/radio_radio_signal_acquisition_method")
-        self.time_interval = rospy.get_param("/radio_time_interval")
-        self.distance_interval = rospy.get_param("/radio_distance_interval")
+        self.radio_signal_acquisition_method = 1
+        self.time_interval = 0.1
+        self.distance_interval = 0.2
 
         # Marker variables
         self.radio_markers_array = MarkerArray()
@@ -46,15 +53,17 @@ class RadioSignal:
 
         self.radio_new_marker = Marker()
         self.marker_counter = 1
+        self.marker_size = 0.8
+        self.marker_frame_id = 'map'
 
         # Starting ROS
         rospy.init_node('radio_to_rviz', anonymous=True)
         rospy.loginfo("Starting radio signal mapping node...")
 
         self.subscriber_radio = rospy.Subscriber("/radio/status", Float32MultiArray, self.subscriber_radio_callback)
-        self.subscriber_odom = rospy.Subscriber("/tf", TFMessage, self.odom_callback)
+        self.listener = tf.TransformListener()
 
-        self.radio_markers_publisher = rospy.Publisher('/radio_markers', MarkerArray, queue_size=10, latch=True)
+        self.radio_markers_publisher = rospy.Publisher('/radio/collected_data', MarkerArray, queue_size=10, latch=True)
 
         self.setting = termios.tcgetattr(sys.stdin)
         self.key = 0
@@ -83,22 +92,10 @@ class RadioSignal:
                          "\n 3 - Get the radio signal every time the up arrow is pressed")
 
     def subscriber_radio_callback(self, message):
-        self.radio_RSSI = message.data[0]
-
-    def odom_callback(self, message):
-        for T in message.transforms:
-            # Choose the transform of the EspeleoRobo
-            if T.child_frame_id == "base_link":
-                # Get the position
-                self.x = T.transform.translation.x
-                self.y = T.transform.translation.y
-
-    def get_rssi_to_rgb(self, green_value):
-        """
-        Function to remap the radio signal value (from 0 to 100) to a value between  0 and 1
-        """
-        new_value = (((green_value - self.radio_min) * self.NewRange) / self.OldRange) + self.green_min
-        return new_value
+        if self.is_dbm:
+            self.radio_RSSI = message.data[1]
+        else:
+            self.radio_RSSI = message.data[0]
 
     def get_radio_signal_keyboard(self):
         rospy.loginfo("Using Keyboar method to collect radio signal...")
@@ -121,6 +118,12 @@ class RadioSignal:
 
         rate = rospy.Duration(self.time_interval)
         while not rospy.is_shutdown():
+            try:
+                (trans,rot) = self.listener.lookupTransform('/map', '/base_link_2d', rospy.Time(0))
+                self.x = trans[0]
+                self.y = trans[1]
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                continue
             self.get_radio_signal_distance()
             if self.distance_between_signals:
                 self.RSSI.append(self.radio_RSSI)
@@ -144,10 +147,11 @@ class RadioSignal:
             self.distance_between_signals = True
 
     def publish_radio_signal_array(self):
-        intensity = self.get_rssi_to_rgb(self.RSSI[-1])
+        #intensity = self.get_rssi_to_rgb(self.RSSI[-1])
+        intensity = radio_lib.get_rgb_from_rssi(self.RSSI[-1], self.is_dbm)
 
         self.radio_new_marker = Marker()
-        self.radio_new_marker.header.frame_id = "map"
+        self.radio_new_marker.header.frame_id = self.marker_frame_id
         self.radio_new_marker.header.stamp = rospy.Time.now()
         self.radio_new_marker.ns = "espeleo_radio_map"
         self.radio_new_marker.id = self.marker_counter
@@ -157,14 +161,14 @@ class RadioSignal:
         self.radio_new_marker.pose.position.x = self.points[-1][0]
         self.radio_new_marker.pose.position.y = self.points[-1][1]
         self.radio_new_marker.pose.position.z = 0
-        self.radio_new_marker.scale.x = 0.1
-        self.radio_new_marker.scale.y = 0.1
+        self.radio_new_marker.scale.x = self.marker_size
+        self.radio_new_marker.scale.y = self.marker_size
         self.radio_new_marker.scale.z = 0.1
 
         self.radio_new_marker.color.a = 1.0
-        self.radio_new_marker.color.g = 1 - 1.0 * intensity
+        self.radio_new_marker.color.b = 1 - 1.0 * intensity
         self.radio_new_marker.color.r = 1.0 * intensity
-        self.radio_new_marker.color.b = 0.8 * (1 - 2.0 * abs(intensity - 1 / 2))
+        self.radio_new_marker.color.g = 0.8 * (1 - 2.0 * abs(intensity - 1 / 2))
         self.marker_counter += 1
         self.radio_new_marker.lifetime = rospy.Duration(0)
 
@@ -196,4 +200,6 @@ class RadioSignal:
 
 
 if __name__ == '__main__':
+    radio_lib = RadioLib()
     radio_obj = RadioSignal()
+    

@@ -1,0 +1,13 @@
+<launch>
+	<!-- No que publica a mensagem de alerta -->
+	<node name="duplicate_tf_t" pkg="espeleo_radio" type="duplicate_tf.py" output = "screen" respawn="true" >
+	</node>
+
+	<node name="scan_remmaper" pkg="espeleo_radio" type="scan_remap.py" output = "screen" respawn="true" >
+	</node>
+
+	<!-- No que publica a qualidade emulada do sinal de radio -->
+	    <node pkg="tf" type="static_transform_publisher" name="base_link_2d_to_laser" args="0 0 0.41 0 0 0 1 base_link_2d velodyne_2d 20" />
+		<node pkg="tf" type="static_transform_publisher" name="path_origin" args="0.3 0 0 0 0 0 1 base_link_2d path_origin 20" />
+
+</launch>
