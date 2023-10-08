@@ -3,6 +3,12 @@ Package responsible for issuing an alert when the robot loses contact with the b
 
 The package publishes a warning when the quality status gets too low, or the difference between noise and signal gets too low, so that the noise disturbs the signal way too much.
 
+## Navigation 
+Video link: [https://youtu.be/E54siN-m87k](https://youtu.be/E54siN-m87k)
+[![Navigation](https://github.com/AndreCid/Radio-JINT/assets/44469467/049f632b-1af6-4b24-a0b3-2043b97e72f4)
+)](https://youtu.be/e8KckhChc3M)
+
+
 ## Dependencies:
 
 To run this package you're going to need Python libraries Selenium and Beautiful Soup installed in your machine.
